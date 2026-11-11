@@ -1,0 +1,6 @@
+{
+  "name": "SG Transport & Carpark Live Monitor",
+  "description": "Real-time Singapore traffic incidents, MRT/LRT network status, and live carpark lot availability monitor with interactive transit map.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
