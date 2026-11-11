@@ -185,3 +185,21 @@ export interface BusArrivalResponse {
   _liveMode?: boolean;
 }
 
+export interface BusStopLocation {
+  code: string;
+  name: string;
+  road: string;
+  corridor: string;
+  lat: number;
+  lng: number;
+  nearbyExpressways: string[];
+}
+
+export interface BusRouteImpact {
+  incident: TrafficIncident;
+  distanceKm: number;
+  impactLevel: 'low' | 'moderate' | 'high';
+  estimatedDelayMins: number;
+  description: string;
+}
+

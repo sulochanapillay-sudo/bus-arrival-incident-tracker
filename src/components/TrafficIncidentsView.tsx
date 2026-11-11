@@ -9,6 +9,7 @@ import { EXPRESSWAYS_LIST } from '../data/singaporeData';
 import {
   AlertCircle,
   AlertTriangle,
+  Bus,
   Camera,
   Clock,
   ExternalLink,
@@ -24,6 +25,7 @@ interface Props {
   cameras: TrafficCamera[];
   onSelectIncidentOnMap: (incident: TrafficIncident) => void;
   onSimulateNewIncident: () => void;
+  onCheckBusStop?: (busStopCode: string) => void;
 }
 
 export const TrafficIncidentsView: React.FC<Props> = ({
@@ -31,6 +33,7 @@ export const TrafficIncidentsView: React.FC<Props> = ({
   cameras,
   onSelectIncidentOnMap,
   onSimulateNewIncident,
+  onCheckBusStop,
 }) => {
   const [selectedExpressway, setSelectedExpressway] = useState<string>('ALL');
   const [selectedType, setSelectedType] = useState<string>('ALL');
@@ -232,17 +235,48 @@ export const TrafficIncidentsView: React.FC<Props> = ({
                       </div>
                     )}
                   </div>
+
+                  {/* Correlated Bus Feeder Stop */}
+                  {(() => {
+                    const busHint =
+                      incident.expressway === 'PIE'
+                        ? { code: '83139', name: 'Still Rd / Eunos' }
+                        : incident.expressway === 'CTE'
+                        ? { code: '01012', name: 'Victoria St / Bugis' }
+                        : incident.expressway === 'ECP'
+                        ? { code: '03218', name: 'Suntec Ctr' }
+                        : incident.expressway === 'AYE'
+                        ? { code: '28009', name: 'Jurong East Int' }
+                        : { code: '83139', name: 'Still Rd' };
+
+                    return (
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/90 border border-slate-800/80 mb-4 text-[11px]">
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <Bus className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                          <span>Feeder Bus Stop:</span>
+                          <span className="font-mono text-slate-200 font-medium">
+                            {busHint.code} ({busHint.name})
+                          </span>
+                        </div>
+                        {onCheckBusStop && (
+                          <button
+                            onClick={() => onCheckBusStop(busHint.code)}
+                            className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 transition-colors"
+                          >
+                            <span>Check Arrivals</span>
+                            <span>→</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Card Actions */}
                 <div className="flex items-center justify-between pt-3 border-t border-slate-800/60 text-xs">
-                  <button
-                    onClick={() => onSelectIncidentOnMap(incident)}
-                    className="flex items-center gap-1.5 text-sky-400 hover:text-sky-300 transition-colors font-medium"
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span>Locate on Map</span>
-                  </button>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    EMAS ID: {incident.id}
+                  </span>
 
                   {relatedCam && (
                     <button

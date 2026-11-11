@@ -6,6 +6,8 @@
  */
 
 import {
+  BusRouteImpact,
+  BusStopLocation,
   CarparkLot,
   MrtLine,
   RailLine,
@@ -723,3 +725,179 @@ export const EXPRESSWAYS_LIST: Array<{ id: string; name: string; fullName: strin
   { id: 'MCE', name: 'MCE', fullName: 'Marina Coastal Expressway' },
   { id: 'Arterial', name: 'Arterial', fullName: 'Major Arterials' },
 ];
+
+export const KNOWN_BUS_STOPS: Record<string, BusStopLocation> = {
+  '83139': {
+    code: '83139',
+    name: 'Opp Block 831',
+    road: 'Still Road / Eunos',
+    corridor: 'PIE & ECP (East Coast / Eunos Link)',
+    lat: 1.3142,
+    lng: 103.9030,
+    nearbyExpressways: ['PIE', 'ECP'],
+  },
+  '01012': {
+    code: '01012',
+    name: 'Bugis Stn Exit B',
+    road: 'Victoria Street',
+    corridor: 'Central Arterial (Victoria St / Ophir Rd)',
+    lat: 1.3005,
+    lng: 103.8560,
+    nearbyExpressways: ['CTE', 'ECP', 'KPE'],
+  },
+  '03218': {
+    code: '03218',
+    name: 'Opp Suntec Convention Ctr',
+    road: 'Temasek Boulevard',
+    corridor: 'Marina Boulevard / Nicoll Highway',
+    lat: 1.2935,
+    lng: 103.8572,
+    nearbyExpressways: ['ECP', 'MCE', 'KPE'],
+  },
+  '10011': {
+    code: '10011',
+    name: 'Opp VivoCity',
+    road: 'Telok Blangah Road',
+    corridor: 'West Coast / HarbourFront Corridor',
+    lat: 1.2650,
+    lng: 103.8220,
+    nearbyExpressways: ['AYE', 'MCE'],
+  },
+  '65009': {
+    code: '65009',
+    name: 'Tampines Interchange',
+    road: 'Tampines Central 1',
+    corridor: 'TPE & PIE (East Hub)',
+    lat: 1.3533,
+    lng: 103.9452,
+    nearbyExpressways: ['TPE', 'PIE'],
+  },
+  '28009': {
+    code: '28009',
+    name: 'Jurong East Interchange',
+    road: 'Jurong Gateway Road',
+    corridor: 'AYE & PIE (Jurong Gateway)',
+    lat: 1.3331,
+    lng: 103.7423,
+    nearbyExpressways: ['AYE', 'PIE'],
+  },
+  '80149': {
+    code: '80149',
+    name: 'Kallang Stn Exit A',
+    road: 'Sims Avenue',
+    corridor: 'PIE / Nicoll Highway Link',
+    lat: 1.3115,
+    lng: 103.8715,
+    nearbyExpressways: ['PIE', 'KPE'],
+  },
+  '54009': {
+    code: '54009',
+    name: 'Bishan Interchange',
+    road: 'Bishan Place',
+    corridor: 'CTE / Marymount Corridor',
+    lat: 1.3508,
+    lng: 103.8481,
+    nearbyExpressways: ['CTE', 'PIE'],
+  },
+};
+
+/**
+ * Haversine formula to compute distance in km between two GPS coordinates
+ */
+export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+
+/**
+ * Cross-references a bus stop's location and serving road corridors
+ * with active Singapore EMAS traffic incidents.
+ */
+export function correlateIncidentsForBusStop(
+  busStopCode: string,
+  incidents: TrafficIncident[]
+): {
+  busStop: BusStopLocation;
+  impacts: BusRouteImpact[];
+  overallStatus: 'nominal' | 'minor_slowdown' | 'severe_disruption';
+  delaySummary: string;
+} {
+  const defaultLocation: BusStopLocation = {
+    code: busStopCode,
+    name: `Bus Stop ${busStopCode}`,
+    road: 'Arterial Road Network',
+    corridor: 'Islandwide Urban Corridor',
+    lat: 1.3142,
+    lng: 103.9030,
+    nearbyExpressways: ['PIE', 'CTE', 'ECP', 'AYE'],
+  };
+
+  const stop = KNOWN_BUS_STOPS[busStopCode] || defaultLocation;
+
+  const impacts: BusRouteImpact[] = [];
+
+  for (const inc of incidents) {
+    const dist = calculateDistanceKm(stop.lat, stop.lng, inc.lat, inc.lng);
+    const isNearbyExpressway = stop.nearbyExpressways.includes(inc.expressway);
+
+    // Correlate if within 6km OR along intersecting expressway
+    if (dist <= 6.5 || isNearbyExpressway) {
+      let impactLevel: 'low' | 'moderate' | 'high' = 'low';
+      let estimatedDelayMins = 3;
+
+      if (inc.severity === 'severe' || inc.type === 'Accident') {
+        impactLevel = 'high';
+        estimatedDelayMins = Math.max(5, Math.min(15, (inc.estimatedClearanceMinutes || 20) / 2));
+      } else if (inc.type === 'Heavy Traffic' || inc.severity === 'moderate') {
+        impactLevel = 'moderate';
+        estimatedDelayMins = 5;
+      }
+
+      impacts.push({
+        incident: inc,
+        distanceKm: dist,
+        impactLevel,
+        estimatedDelayMins: Math.round(estimatedDelayMins),
+        description: `${inc.type} on ${inc.expressway} (${dist}km away) — ${inc.location}. ${inc.lanesAffected || ''}`,
+      });
+    }
+  }
+
+  // Sort by highest impact and closest distance
+  impacts.sort((a, b) => {
+    const weight = { high: 3, moderate: 2, low: 1 };
+    return weight[b.impactLevel] - weight[a.impactLevel] || a.distanceKm - b.distanceKm;
+  });
+
+  const hasHigh = impacts.some((i) => i.impactLevel === 'high');
+  const hasModerate = impacts.some((i) => i.impactLevel === 'moderate');
+
+  const overallStatus = hasHigh
+    ? 'severe_disruption'
+    : hasModerate
+    ? 'minor_slowdown'
+    : 'nominal';
+
+  const delaySummary = hasHigh
+    ? `${impacts.length} traffic incident(s) detected along feeder corridors (${stop.nearbyExpressways.join(', ')}). Expect en-route bus bunching or +5 to +12 mins delay.`
+    : hasModerate
+    ? `Moderate traffic slowdown on adjacent corridors (${stop.nearbyExpressways.join(', ')}). Expect ~3 to 5 mins en-route variance.`
+    : `Surrounding road corridors (${stop.nearbyExpressways.join(', ')}) flowing smoothly. Nominal bus arrival progression.`;
+
+  return {
+    busStop: stop,
+    impacts,
+    overallStatus,
+    delaySummary,
+  };
+}
+

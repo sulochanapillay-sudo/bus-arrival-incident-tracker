@@ -28,6 +28,7 @@ import {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('buses');
+  const [selectedBusStopCode, setSelectedBusStopCode] = useState('83139');
   const [incidents, setIncidents] = useState<TrafficIncident[]>([]);
   const [cameras, setCameras] = useState<TrafficCamera[]>([]);
   const [backendSettings, setBackendSettings] = useState<BackendSettings>(() =>
@@ -156,9 +157,9 @@ export default function App() {
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-extrabold font-mono tabular-nums text-sky-400">
-                83139
+                {selectedBusStopCode}
               </span>
-              <span className="text-xs text-slate-400">Eunos / Still Rd</span>
+              <span className="text-xs text-slate-400">Selected Stop Telemetry</span>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 mt-3 pt-2.5 border-t border-slate-800/80">
               <span className="font-mono text-[11px] text-emerald-400">20s LTA Refresh Cadence</span>
@@ -196,18 +197,28 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tab 1: Dedicated Bus Arrival (v3) View */}
+        {/* Tab 1: Dedicated Bus Arrival (v3) View with Correlated Traffic Link */}
         {activeTab === 'buses' && (
-          <BusArrivalView initialBusStopCode="83139" />
+          <BusArrivalView
+            initialBusStopCode={selectedBusStopCode}
+            incidents={incidents}
+            cameras={cameras}
+            onNavigateToIncident={() => setActiveTab('incidents')}
+          />
         )}
 
-        {/* Tab 2: Dedicated Traffic Incidents View */}
+        {/* Tab 2: Dedicated Traffic Incidents View with Feeder Bus Links */}
         {activeTab === 'incidents' && (
           <TrafficIncidentsView
             incidents={incidents}
             cameras={cameras}
             onSelectIncidentOnMap={() => {}}
             onSimulateNewIncident={handleSimulateIncident}
+            onCheckBusStop={(code) => {
+              setSelectedBusStopCode(code);
+              setActiveTab('buses');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
       </main>

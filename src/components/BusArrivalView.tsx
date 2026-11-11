@@ -1,22 +1,42 @@
 import React, { useEffect, useState } from 'react';
-import { BusArrivalResponse, BusServiceArrival, NextBusInfo } from '../types/transit';
+import {
+  BusArrivalResponse,
+  BusRouteImpact,
+  BusServiceArrival,
+  NextBusInfo,
+  TrafficCamera,
+  TrafficIncident,
+} from '../types/transit';
 import { TransitService } from '../services/ltaClient';
 import {
+  KNOWN_BUS_STOPS,
+  correlateIncidentsForBusStop,
+} from '../data/singaporeData';
+import {
   Accessibility,
+  AlertCircle,
+  AlertTriangle,
   ArrowRight,
   Bus,
+  Camera,
   Clock,
   Compass,
+  ExternalLink,
   Layers,
   MapPin,
   RefreshCw,
   Search,
+  ShieldAlert,
   Users,
+  X,
   Zap,
 } from 'lucide-react';
 
 interface Props {
   initialBusStopCode?: string;
+  incidents: TrafficIncident[];
+  cameras: TrafficCamera[];
+  onNavigateToIncident?: (incident: TrafficIncident) => void;
 }
 
 const COMMON_STOPS = [
@@ -28,13 +48,22 @@ const COMMON_STOPS = [
   { code: '28009', name: 'Jurong East Interchange' },
 ];
 
-export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }) => {
+export const BusArrivalView: React.FC<Props> = ({
+  initialBusStopCode = '83139',
+  incidents,
+  cameras,
+  onNavigateToIncident,
+}) => {
   const [busStopCode, setBusStopCode] = useState(initialBusStopCode);
   const [inputCode, setInputCode] = useState(initialBusStopCode);
   const [data, setData] = useState<BusArrivalResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [countdown, setCountdown] = useState(20); // 20-second refresh requirement
+  const [countdown, setCountdown] = useState(20);
+  const [activeIncidentModal, setActiveIncidentModal] = useState<TrafficIncident | null>(null);
+
+  // Compute real-time correlated traffic impact for current bus stop
+  const correlation = correlateIncidentsForBusStop(busStopCode, incidents);
 
   const fetchArrivals = async (codeToFetch: string) => {
     setIsLoading(true);
@@ -119,18 +148,18 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
 
   return (
     <div className="space-y-6">
-      {/* Header and Stop Search */}
+      {/* Search & Bus Stop Control Box */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Bus className="w-5 h-5 text-sky-400" />
               <h2 className="text-lg font-bold text-white tracking-tight">
-                Singapore Bus Arrival Telemetry (v3 Endpoint)
+                Singapore Bus Arrival Telemetry & Traffic Link
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              Live serverless proxy connection to LTA DataMall v3 BusArrival (20-second cadence)
+              Correlates LTA v3 BusArrival predictions with active EMAS Expressway road incidents
             </p>
           </div>
 
@@ -171,7 +200,7 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
           </button>
         </form>
 
-        {/* Common Stop Shortcuts */}
+        {/* Quick Test Stops */}
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-400">
           <span className="text-[11px] text-slate-500">Quick Test Stops:</span>
           {COMMON_STOPS.map((st) => (
@@ -193,29 +222,138 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
         </div>
       </div>
 
-      {/* Stop Information & Notice */}
-      {data?._warning && (
-        <div className="p-3 bg-amber-950/30 border border-amber-800/50 rounded-xl text-xs text-amber-200/90 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>{data._warning}</span>
-          </div>
-          <span className="font-mono text-[10px] text-amber-400 uppercase">Simulator Payload</span>
-        </div>
-      )}
+      {/* Correlated Traffic Incidents Impact Widget (Direct Link) */}
+      <div
+        className={`border rounded-xl p-4 shadow-sm transition-all ${
+          correlation.overallStatus === 'severe_disruption'
+            ? 'bg-rose-950/20 border-rose-800/70'
+            : correlation.overallStatus === 'minor_slowdown'
+            ? 'bg-amber-950/20 border-amber-800/70'
+            : 'bg-slate-900 border-slate-800'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`p-2 rounded-lg ${
+                correlation.overallStatus === 'severe_disruption'
+                  ? 'bg-rose-500/20 text-rose-400'
+                  : correlation.overallStatus === 'minor_slowdown'
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'bg-emerald-500/20 text-emerald-400'
+              }`}
+            >
+              {correlation.overallStatus === 'severe_disruption' ? (
+                <ShieldAlert className="w-5 h-5 animate-pulse" />
+              ) : correlation.overallStatus === 'minor_slowdown' ? (
+                <AlertTriangle className="w-5 h-5" />
+              ) : (
+                <Zap className="w-5 h-5" />
+              )}
+            </div>
 
-      {/* Active Stop Details */}
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white tracking-tight">
+                  Correlated Traffic & Road Corridor Status
+                </h3>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
+                    correlation.overallStatus === 'severe_disruption'
+                      ? 'bg-rose-500 text-white'
+                      : correlation.overallStatus === 'minor_slowdown'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                  }`}
+                >
+                  {correlation.overallStatus === 'severe_disruption'
+                    ? 'Delay Alert'
+                    : correlation.overallStatus === 'minor_slowdown'
+                    ? 'Minor Slowdown'
+                    : 'Clear Corridor'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Stop {busStopCode} ({correlation.busStop.name}) · Corridor: {correlation.busStop.corridor}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="text-slate-400">
+              {correlation.impacts.length} Incident(s) in Corridor
+            </span>
+          </div>
+        </div>
+
+        {/* Traffic impact summary prose */}
+        <p className="text-xs text-slate-300 leading-relaxed pt-3">
+          {correlation.delaySummary}
+        </p>
+
+        {/* List of Correlated Road Incidents */}
+        {correlation.impacts.length > 0 && (
+          <div className="mt-3 space-y-2 pt-2 border-t border-slate-800/60">
+            <span className="text-[11px] font-semibold text-slate-400 block uppercase tracking-wider">
+              Linked Expressway Incident Feeds:
+            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {correlation.impacts.map((impact: BusRouteImpact) => {
+                const inc = impact.incident;
+                const cam = cameras.find((c) => c.id === inc.cameraFeedId || c.expressway === inc.expressway);
+
+                return (
+                  <div
+                    key={inc.id}
+                    className="p-3 bg-slate-950/80 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded font-mono font-bold text-[10px] bg-slate-800 text-white">
+                            {inc.expressway}
+                          </span>
+                          <span className="font-semibold text-slate-200">{inc.type}</span>
+                        </div>
+                        <span className="font-mono text-[11px] text-amber-400">
+                          +{impact.estimatedDelayMins}m est. delay
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 line-clamp-2">{inc.message}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-900 text-[11px]">
+                      <span className="text-slate-500 font-mono">
+                        {impact.distanceKm} km from bus stop
+                      </span>
+                      <button
+                        onClick={() => setActiveIncidentModal(inc)}
+                        className="text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+                      >
+                        <Camera className="w-3 h-3 text-emerald-400" />
+                        <span>Inspect CCTV Alert →</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Active Bus Stop Information Bar */}
       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
         <div>
           <span>Bus Stop Code: </span>
           <span className="font-mono font-bold text-white text-sm">{busStopCode}</span>
           <span className="text-slate-600 mx-2">·</span>
-          <span>{data?.Services?.length || 0} Bus Services Operating</span>
+          <span>{data?.Services?.length || 0} Operating Services</span>
         </div>
         <span className="text-slate-500 text-[11px]">Last synced: {lastRefreshed.toLocaleTimeString()}</span>
       </div>
 
-      {/* Bus Services Grid */}
+      {/* Bus Services Grid with Traffic Impact Correlation */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {(!data?.Services || data.Services.length === 0) ? (
           <div className="col-span-full py-12 text-center bg-slate-900 border border-slate-800 rounded-xl">
@@ -231,6 +369,10 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
             const next2 = calculateMinutesUntil(service.NextBus2?.EstimatedArrival);
             const next3 = calculateMinutesUntil(service.NextBus3?.EstimatedArrival);
             const loadBadge = getLoadBadge(service.NextBus?.Load);
+
+            // Compute route-specific delay if incident occurs along serving corridor
+            const routeDelay = correlation.overallStatus === 'severe_disruption' ? 6 : correlation.overallStatus === 'minor_slowdown' ? 3 : 0;
+            const adjustedEtaMinutes = next1.minutes !== 999 ? Math.max(0, next1.minutes + routeDelay) : null;
 
             return (
               <div
@@ -285,6 +427,19 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
                         </span>
                       )}
                     </div>
+
+                    {/* Route Traffic Delay Adjustment Indicator */}
+                    {routeDelay > 0 && !next1.isArriving && (
+                      <div className="mt-2 pt-2 border-t border-slate-900 text-xs flex items-center justify-between text-amber-300">
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-400" />
+                          <span>Traffic adjusted:</span>
+                        </span>
+                        <span className="font-mono font-bold">
+                          ~{adjustedEtaMinutes} mins (+{routeDelay}m slow traffic)
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Following Buses Strip */}
@@ -311,9 +466,22 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
                   </div>
                 </div>
 
-                {/* Footer GPS status */}
+                {/* Card Footer linking Traffic Corridors */}
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-3 mt-3 border-t border-slate-800/80">
-                  <span>GPS Telemetry</span>
+                  <div className="flex items-center gap-1">
+                    {correlation.impacts.length > 0 ? (
+                      <span className="text-amber-400 flex items-center gap-1 font-medium">
+                        <ShieldAlert className="w-3 h-3" />
+                        <span>Corridor Alert</span>
+                      </span>
+                    ) : (
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <Zap className="w-3 h-3" />
+                        <span>Route Clear</span>
+                      </span>
+                    )}
+                  </div>
+
                   <span className="font-mono text-slate-400">
                     {service.NextBus?.Latitude ? `${service.NextBus.Latitude}, ${service.NextBus.Longitude}` : 'En route'}
                   </span>
@@ -323,6 +491,88 @@ export const BusArrivalView: React.FC<Props> = ({ initialBusStopCode = '83139' }
           })
         )}
       </div>
+
+      {/* Incident & CCTV Modal */}
+      {activeIncidentModal && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setActiveIncidentModal(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-800 text-white">
+                    {activeIncidentModal.expressway}
+                  </span>
+                  <span className="text-xs font-bold text-rose-400 uppercase">
+                    {activeIncidentModal.type}
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  {activeIncidentModal.location}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveIncidentModal(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-200 leading-relaxed bg-slate-950 p-3 rounded-lg border border-slate-800">
+              {activeIncidentModal.message}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[11px]">Affected Lanes</span>
+                <span className="font-medium text-slate-200">{activeIncidentModal.lanesAffected || 'All lanes affected'}</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                <span className="text-slate-500 block text-[11px]">Est. Clearance</span>
+                <span className="font-mono text-amber-300 font-semibold">
+                  ~{activeIncidentModal.estimatedClearanceMinutes} minutes
+                </span>
+              </div>
+            </div>
+
+            {/* Camera preview if available */}
+            {cameras.find((c) => c.expressway === activeIncidentModal.expressway) && (
+              <div className="space-y-2">
+                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Camera className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Expressway CCTV Surveillance Snapshot</span>
+                </span>
+                <div className="relative aspect-video rounded-lg overflow-hidden border border-slate-700 bg-black">
+                  <img
+                    src={cameras.find((c) => c.expressway === activeIncidentModal.expressway)?.imageUrl}
+                    alt="Expressway Surveillance CCTV"
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2 left-2 bg-black/80 px-2 py-0.5 rounded text-[10px] font-mono text-emerald-400">
+                    LIVE LTA CAM
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setActiveIncidentModal(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
