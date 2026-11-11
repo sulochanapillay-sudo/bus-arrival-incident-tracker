@@ -103,6 +103,10 @@ export const BusArrivalView: React.FC<Props> = ({
     }
   };
 
+  const handleClear = () => {
+    setInputCode('');
+  };
+
   // ETA calculator helper
   const calculateMinutesUntil = (estimatedIso?: string): { text: string; isArriving: boolean; minutes: number } => {
     if (!estimatedIso) return { text: '—', isArriving: false, minutes: 999 };
@@ -181,23 +185,46 @@ export const BusArrivalView: React.FC<Props> = ({
         </div>
 
         {/* Input Bar */}
-        <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 pt-2">
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 pt-2">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500 pointer-events-none" />
             <input
               type="text"
               placeholder="Enter 5-digit Bus Stop Code (e.g. 83139)..."
               value={inputCode}
               onChange={(e) => setInputCode(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-sky-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-100 placeholder-slate-500 font-mono focus:outline-none focus:border-sky-500 transition-colors"
             />
+            {inputCode && (
+              <button
+                type="button"
+                onClick={handleClear}
+                className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300 p-0.5 rounded transition-colors"
+                title="Clear search"
+                aria-label="Clear search input"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <button
             type="submit"
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-700 transition-colors"
+            disabled={!inputCode.trim()}
+            className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg border border-sky-500 transition-colors"
           >
             Lookup Stop
           </button>
+          {inputCode && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5"
+              title="Clear search input"
+            >
+              <X className="w-3.5 h-3.5 text-slate-400" />
+              <span>Clear Search</span>
+            </button>
+          )}
         </form>
 
         {/* Quick Test Stops */}
